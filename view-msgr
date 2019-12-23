@@ -1,0 +1,21 @@
+fname=$1
+
+my_array=($(echo $fname | tr "_" "\n"))
+ma1=${my_array[-2]}
+my_array1=($(echo $ma1 | tr "/" "\n"))
+name=${my_array1[-1]}
+
+echo ${name}
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+cd $fname
+(jq -n "[inputs | .messages] | add" *.json ) > combined.json
+
+cd $DIR
+
+d8=`date +"%Y%m%d$H$M"`
+
+python3 msgr-viewer.py -f ${fname}/combined.json -n ${name} -o imgs/${name}_${d8}.png
+
+xdg-open imgs/${name}_${d8}.png
