@@ -14,8 +14,12 @@ cd $fname
 
 cd $DIR
 
+if [ ! -d "imgs" ]; then 
+	mkdir imgs
+fi
+
 d8=`date +"%Y%m%d$H$M"`
 
 python3 msgr-viewer.py -f ${fname}/combined.json -n ${name} -o imgs/${name}_${d8}.png
 
-#xdg-open imgs/${name}_${d8}.png
+xdg-open imgs/${name}_${d8}.png

@@ -11,9 +11,6 @@ import argparse
 import pytz
 import math
 
-ms_day = 86400000
-ms_per_wk = ms_day# * 7
-
 def get_messages(filename):
     with open(filename, 'r') as messagefile:
         data = messagefile.read()
@@ -71,8 +68,9 @@ def add_cols(msgs):
     msgs["weekid"] = msgs["timestamp_ms"].apply(weekid).astype(int)
     msgs["weekid"] -= np.min(msgs["weekid"])
 
-    # month id
+    # month id and date id
     msgs["monthid"] = msgs["year"].astype(str) + msgs["month"].astype(str)
+    msgs["dateid"] = msgs["monthid"].astype(str) + msgs["day"].astype(str)
 
     return msgs
 
@@ -82,8 +80,10 @@ def xticks(x):
         nmax = 25
     elif maxlen < 5:
         nmax = 15
-    else:
+    elif maxlen < 6:
         nmax = 10
+    else:
+        nmax = 5
         
     if len(x) < nmax:
         return x
@@ -136,16 +136,17 @@ def plot_percent(names, msgs, ax, timediff, colname):
 
     ax.set_xticks(xticks(full_data))
 
-def plot_difference(names, msgs, ax, timediff):
+def plot_difference(names, msgs, ax, timediff, colname):
     full_data = np.unique(msgs[timediff])
     ncompare = []
 
-    for i in range(len(names)):
-        n = names[i]
-        person = msgs[msgs["sender_name"] == n].sort_values(by=timediff)
-        k, nmsgs = np.unique(person[timediff], return_counts=True)
-        _, nmsgs = add_full(full_data, k, nmsgs)
-        ncompare.append(nmsgs)
+    grouped = msgs.groupby([timediff, "sender_name"], as_index=False)[colname].sum()
+
+    for name in names:
+        person = grouped[grouped["sender_name"] == name]
+        k, n = np.array(person[timediff]), np.array(person[colname])
+        _, n = add_full(full_data, k, n)
+        ncompare.append(n)
 
     difference = np.divide(ncompare[0]-ncompare[1], (ncompare[0]+ncompare[1])/2) * 100
     df = pd.DataFrame(np.vstack((difference, difference < 0)).T, columns=["vals", "colors"])
@@ -162,7 +163,7 @@ def get_names(msgs):
 
     return names
 
-def plot_line(names, msgs, ax, colnum, datacol, axisstr):
+def plot_line(names, msgs, ax, colnum, datacol, axisstr, small=False):
     plot_graph(names, msgs, ax[0, colnum], "hour", datacol)
     ax[0, colnum].set_title(axisstr + " by hour")
     ax[0, colnum].set_xlabel("Hour")
@@ -173,42 +174,64 @@ def plot_line(names, msgs, ax, colnum, datacol, axisstr):
     ax[1, colnum].set_xlabel("Week")
     ax[1, colnum].set_ylabel(axisstr)
     
-    plot_graph(names, msgs, ax[2, colnum], "monthid", datacol)
-    ax[2, colnum].set_title(axisstr + " by month")
-    ax[2, colnum].set_xlabel("Month")
-    ax[2, colnum].set_ylabel(axisstr)
+    if not small:
+        plot_graph(names, msgs, ax[2, colnum], "monthid", datacol)
+        ax[2, colnum].set_title(axisstr + " by month")
+        ax[2, colnum].set_xlabel("Month")
+        ax[2, colnum].set_ylabel(axisstr)
+    else:
+        plot_graph(names, msgs, ax[2, colnum], "dateid", datacol)
+        ax[2, colnum].set_title(axisstr + " by day")
+        ax[2, colnum].set_xlabel("day")
+        ax[2, colnum].set_ylabel(axisstr)
+    
 
-def plot_nwords_graphs(names, msgs, ax, colnum):
-    plot_percent(names, msgs, ax[0, colnum], "hour", "nwords")
+def plot_stacked_bar(names, msgs, ax, colnum, datacol, axisstr, small=False):
+    plot_percent(names, msgs, ax[0, colnum], "hour", datacol)
     ax[0, colnum].set_xlabel("Hour")
-    ax[0, colnum].set_title("Percent of words exchanged by hour")
-    ax[0, colnum].set_ylabel("Percent")
+    ax[0, colnum].set_title(axisstr + " by hour")
+    ax[0, colnum].set_ylabel(axisstr)
 
-    plot_percent(names, msgs, ax[1, colnum], "weekid", "nwords")
+    plot_percent(names, msgs, ax[1, colnum], "weekid", datacol)
     ax[1, colnum].set_xlabel("Week")
-    ax[1, colnum].set_title("Percent of words exchanged by week")
-    ax[1, colnum].set_ylabel("Percent")
+    ax[1, colnum].set_title(axisstr + " by week")
+    ax[1, colnum].set_ylabel(axisstr)
 
-    plot_percent(names, msgs, ax[2, colnum], "monthid", "nwords")
-    ax[2, colnum].set_xlabel("Month")
-    ax[2, colnum].set_title("Percent of words exchanged by month")
-    ax[2, colnum].set_ylabel("Percent")
+    if not small:
+        plot_percent(names, msgs, ax[2, colnum], "monthid", datacol)
+        ax[2, colnum].set_xlabel("Month")
+        ax[2, colnum].set_title(axisstr + " by month")
+        ax[2, colnum].set_ylabel(axisstr)
+    else:
+        plot_percent(names, msgs, ax[2, colnum], "dateid", datacol)
+        ax[2, colnum].set_xlabel("Day")
+        ax[2, colnum].set_title(axisstr + " by day")
+        ax[2, colnum].set_ylabel(axisstr)
 
-def plot_diff_graphs(names, msgs, ax, colnum):
-    plot_difference(names, msgs, ax[0, colnum], "hour")
+def plot_diff_graphs(names, msgs, ax, colnum, datacol, axisstr, small=False):
+    yaxis = axisstr.split()[0]
+
+    plot_difference(names, msgs, ax[0, colnum], "hour", datacol)
     ax[0, colnum].set_xlabel("Hour")
-    ax[0, colnum].set_title("Percent difference of messages by hour")
-    ax[0, colnum].set_ylabel("Percent difference")
+    ax[0, colnum].set_title(axisstr + " by hour")
+    ax[0, colnum].set_ylabel(yaxis)
 
-    plot_difference(names, msgs, ax[1, colnum], "weekid")
+    plot_difference(names, msgs, ax[1, colnum], "weekid", datacol)
     ax[1, colnum].set_xlabel("Week")
-    ax[1, colnum].set_title("Percent difference of messages by week")
-    ax[1, colnum].set_ylabel("Percent difference")
+    ax[1, colnum].set_title(axisstr + " by week")
+    ax[1, colnum].set_ylabel(yaxis)
 
-    plot_difference(names, msgs, ax[2, colnum], "monthid")
-    ax[2, colnum].set_xlabel("Month")
-    ax[2, colnum].set_title("Percent difference of messages by month")
-    ax[2, colnum].set_ylabel("Percent difference")
+    if not small:
+        plot_difference(names, msgs, ax[2, colnum], "monthid", datacol)
+        ax[2, colnum].set_xlabel("Month")
+        ax[2, colnum].set_title(axisstr + " by month")
+        ax[2, colnum].set_ylabel(yaxis)
+    else:
+        plot_difference(names, msgs, ax[2, colnum], "dateid", datacol)
+        ax[2, colnum].set_xlabel("Day")
+        ax[2, colnum].set_title(axisstr + " by day")
+        ax[2, colnum].set_ylabel(yaxis)
+    
 
 def main(args):
     msgs = get_messages(args.jsonfile)
@@ -217,26 +240,28 @@ def main(args):
     msgs = msgs.sort_values(by='timestamp_ms')
     
     names = get_names(msgs)
+    small = True if len(np.unique(msgs['monthid'])) < 12 else False
+
+    f, ax = plt.subplots(nrows=3, ncols=4, figsize=(40, 20))
+
+    plot_line(names, msgs, ax, 0, "nmsgs", "Number of messages", small)
+    plot_line(names, msgs, ax, 3, "nwords", "Number of words", small)
 
     if len(names) == 2:
-        f, ax = plt.subplots(nrows=3, ncols=4, figsize=(40, 20))
-        plot_nwords_graphs(names, msgs, ax, 2)
-        plot_diff_graphs(names, msgs, ax, 1)
-        plot_line(names, msgs, ax, 3, "nwords", "Number of words")
+        plot_diff_graphs(names, msgs, ax, 1, "nmsgs", "Percent difference of messages", small)
+        plot_diff_graphs(names, msgs, ax, 2, "nwords", "Percent difference of words", small)
     else:
-        f, ax = plt.subplots(nrows=3, ncols=3, figsize=(30, 15))
-        plot_nwords_graphs(names, msgs, ax, 1)
-        plot_line(names, msgs, ax, 2, "nwords", "Number of words")
-
-    plot_line(names, msgs, ax, 0, "nmsgs", "Number of messages")
-
+        plot_stacked_bar(names, msgs, ax, 1, "nmsgs", "Percent of messages", small)
+        plot_stacked_bar(names, msgs, ax, 2, "nwords", "Percent of words", small)
+        
+    # save
     if args.output is not None:
         print("Saving in:", args.output)
         plt.savefig(args.output)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    #-f JSON FILE -n PERSON'S NAME -o OUTPUT FILE
+    # -f JSON FILE -n PERSON'S NAME -o OUTPUT FILE
     parser.add_argument("-f", "--jsonfile", help="JSON file")
     parser.add_argument("-n", "--name", help="Person's name")
     parser.add_argument("-o", "--output", help="Output file")
