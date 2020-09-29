@@ -157,7 +157,7 @@ def get_names(msgs):
     names = np.unique(msgs['sender_name'])
 
     # rearrange so I always get the same color (bc this is for me)
-    myindex = np.where(names == "Ananya Yammanuru")[0][0]
+    myindex = np.where(names == myname)[0][0]
     names[0], names[myindex] = names[myindex], names[0]
     print("People in this conversation:", names)
 
